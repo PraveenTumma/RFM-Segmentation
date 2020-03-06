@@ -141,3 +141,54 @@ df3.sample(10)
 #Also we can find the Avg. Purchase(Monetary) value per customer: Monetary/Frequency
 df3['AvgMonetaryValue'] = df3['Monetary'] / df3['Frequency']
 df3.sort_values(by=['AvgMonetaryValue'], ascending=False)
+
+# Define rfm_level function
+def rfm_level(df):
+    if df['Score'] >= 9:
+        return 'Can\'t Loose Them'
+    elif ((df['Score'] >= 8) and (df['Score'] < 9)):
+        return 'Champions'
+    elif ((df['Score'] >= 7) and (df['Score'] < 8)):
+        return 'Loyal'
+    elif ((df['Score'] >= 6) and (df['Score'] < 7)):
+        return 'Potential'
+    elif ((df['Score'] >= 5) and (df['Score'] < 6)):
+        return 'Promising'
+    elif ((df['Score'] >= 4) and (df['Score'] < 5)):
+        return 'Needs Attention'
+    else:
+        return 'Require Activation'
+# Create a new variable RFM_Level
+df3['RFM_Level'] = df3.apply(rfm_level, axis=1)
+# Print the header with top 5 rows to the console
+df3.head()
+
+
+# Calculate average values for each RFM_Level, and return a size of each segment 
+rfm_level_agg = df3.groupby('RFM_Level').agg({
+    'Recency': 'mean',
+    'Frequency': 'mean',
+    'Monetary': ['mean', 'count']
+}).round(1)
+# Print the aggregated dataset
+print(rfm_level_agg)
+
+#visualization
+import squarify
+rfm_level_agg.columns = rfm_level_agg.columns.droplevel()
+rfm_level_agg.columns = ['RecencyMean','FrequencyMean','MonetaryMean', 'Count']
+#Create our plot and resize it.
+fig = plt.gcf()
+ax = fig.add_subplot()
+fig.set_size_inches(16, 10)
+squarify.plot(sizes=rfm_level_agg['Count'], 
+              label=['Can\'t Loose Them',
+                     'Champions',
+                     'Loyal',
+                     'Needs Attention',
+                     'Potential', 
+                     'Promising', 
+                     'Require Activation'], alpha=.6 )
+plt.title("RFM Segments",fontsize=18,fontweight="bold")
+plt.axis('off')
+plt.show()
