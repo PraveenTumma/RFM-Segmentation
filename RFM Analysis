@@ -1,0 +1,143 @@
+#Importing necessary librabries
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from datetime import timedelta
+
+import seaborn as sns
+import os
+
+#Checking the current directory
+os.getcwd()
+
+#Reading the Input data file
+df = pd.read_csv('data.csv', encoding='unicode_escape')
+
+#Checking the dataset properties including feature datatypes
+df.info() #541909 * 8
+df.columns
+#Index(['InvoiceNo', 'StockCode', 'Description', 'Quantity', 'InvoiceDate',
+#       'UnitPrice', 'CustomerID', 'Country'],
+#      dtype='object')
+
+#Converting the date feature into pandas datetime Object to retrieve date components
+df['InvoiceDate'] = pd.to_datetime(df['InvoiceDate'])
+df.describe(include='all')
+
+#Finding the number of NAs, Nulls in the dataset
+df.isnull().sum()
+type(df.isnull().sum())
+NullCustIDs = df.isnull().sum()[6]
+
+#Huge number of NA's in Customer ID column
+#Percentage of Null customerIDs:
+totalrightCustIDs = df.shape[0] - NullCustIDs
+percent_NocustIDs = (NullCustIDs/df.shape[0]) * 100 # 24.9%
+
+#Cust IDs are important from RFM analysis so, dropping those observations with no custIDs
+df1 = df.dropna()
+df1.shape #(406829, 8)
+
+df1.isnull().sum()
+
+#Feature Engineering
+#Creating TotalAmount
+df1['TotalAmount'] = df1['Quantity'] * df1['UnitPrice']
+df1.sample(10)
+
+#span of the data
+print('span of the data (YYYY-mm-dd):{} to {}'.format(df1['InvoiceDate'].min(),df1['InvoiceDate'].max()))
+df1['InvoiceDate'].min()
+df1['InvoiceDate'].max()
+
+#Now to create a receny data for each customer, we need to take a cutoff date. Here we are taking 
+#next day after last invoice date as snapshot date
+cutoffDate = df1['InvoiceDate'].max() + timedelta(days=1)
+print(cutoffDate) #2011-12-10 12:50:00
+
+# Grouping by CustomerID
+CustIDGroup = df1.groupby(['CustomerID']).agg({
+                'InvoiceDate': lambda x: (cutoffDate - x.max()).days,
+                'InvoiceNo': 'count',
+                'TotalAmount': 'sum'})
+CustIDGroup.sample(10)
+
+#Renaming the columns
+CustIDGroup.columns=['Recency','Frequency','Monetary']
+
+
+#Plotting distributions of these 3 components
+plt.figure(figsize=(12,9))
+plt.subplot(3, 1, 1); #(nrows, ncols, index)
+sns.distplot(CustIDGroup['Recency'])
+
+plt.subplot(3, 1, 2);
+sns.distplot(CustIDGroup['Frequency'])
+
+plt.subplot(3, 1, 3);
+sns.distplot(CustIDGroup['Monetary'])
+
+# --Calculate R and F groups--
+# Create labels for Recency and Frequency
+RecenyLabels = range(4, 0, -1); 
+FrequencyLabels = range(1, 5,1)
+MonetaryLabels = range(1,5,1)
+
+# Assign these labels to 4 equal percentile groups 
+RecencyGroups = pd.qcut(CustIDGroup['Recency'], q=4, labels=RecenyLabels)
+RecencyGroups.value_counts()
+
+# Assign these labels to 4 equal percentile groups 
+FreqGroups = pd.qcut(CustIDGroup['Frequency'], q=4, labels=FrequencyLabels)
+
+# Assign these labels to 4 equal percentile groups 
+MonetaryGroups = pd.qcut(CustIDGroup['Monetary'], q=4, labels=MonetaryLabels)
+
+
+# Create new columns: R, F and M
+CustIDGroup = CustIDGroup.assign(R = RecencyGroups.values, F = FreqGroups.values, M=MonetaryGroups.values)
+CustIDGroup.head()
+sns.boxplot(y=['Recency'], data=CustIDGroup)
+
+type(CustIDGroup['R'].values[0])
+
+CustIDGroup['R'].values[0]+CustIDGroup['F'].values[0]
+len(CustIDGroup['R'].values)
+
+#Creating a string of RFM values for understanding the type of customer
+x=[]
+for i in range(len(CustIDGroup['R'].values)):
+    k = CustIDGroup['R'].values[i]+CustIDGroup['F'].values[i]+CustIDGroup['M'].values[i]
+    x.append(k)  
+
+df2 = pd.DataFrame(x, columns=['Score'],index=CustIDGroup.index)
+df2.head()
+
+df3 = pd.concat([CustIDGroup,df2],axis=1)
+df3.sample(10)
+                 
+df3['Score'].describe()
+df3['Score'].value_counts()
+df3['Score'].value_counts().sort_values(ascending=True)                 
+
+df3.sort_values(by=['Score'],axis=1,ascending=False)
+
+def joinRFM(df3):
+    return(str(df3['R'])+str(df3['F'])+str(df3['M']))
+
+df3['RFM_group'] = df3.apply(joinRFM, axis=1)
+
+#Categorizing the customers based on the RFM Score into 4 classes
+classes = ['Class1','Class2','Class3','Class4']
+
+RFM_class = pd.qcut(df3['Score'], q=4, labels=classes)
+RFM_class.sample(10)
+RFM_class.value_counts()
+
+df3['Class'] = RFM_class.values
+df3.sample(10)
+
+#Also we can find the Avg. Purchase(Monetary) value per customer: Monetary/Frequency
+df3['AvgMonetaryValue'] = df3['Monetary'] / df3['Frequency']
+df3.sort_values(by=['AvgMonetaryValue'], ascending=False)
